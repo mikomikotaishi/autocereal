@@ -88,8 +88,12 @@ namespace fr::autocereal {
     
     std::vector<std::string> _memberNamesStrings;
 
-    // Sets up and returns the membernames array at compile time.
-    // We can return this array and move it into _memberNames at runtime.
+    // Sets up and returns the membernames array at compile time. I was holding onto this array
+    // originally, but I don't really need it once I stringify it, so I drop it after
+    // I stringify it in the constructor. If we don't care about member names matching in
+    // our JSON and XML, we wouldn't need this array at all. We'd just need to gather
+    // sizes for our various indexing functions.
+
     consteval auto classMemberNames() {
       std::array<std::array<char, MAX_IDENTIFIER_LENGTH>, MAX_CLASS_MEMBERS> names;
 
