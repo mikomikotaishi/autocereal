@@ -155,5 +155,30 @@ TEST(ACSerializeTest, SharedPtr) {
 
   ASSERT_EQ(pleh->foo, copy->foo);
   ASSERT_EQ(pleh->bar, copy->bar);
-    
+}
+
+TEST(ACSerializeTest, SharedPtrInClass) {
+
+  struct Wibble {
+    std::shared_ptr<std::string> wobble;
+  };
+  std::string womble("womble");
+  
+  Wibble wibble;
+  wibble.wobble = std::make_shared<std::string>(womble);
+
+  std::stringstream stream;
+  {
+    cereal::JSONOutputArchive archive(stream);
+    archive(wibble);
+  }
+
+  Wibble copy;
+  {
+    cereal::JSONInputArchive archive(stream);
+    archive(copy);
+  }
+
+  ASSERT_EQ(*wibble.wobble, *copy.wobble);
+  
 }

@@ -22,14 +22,25 @@
 // Structure to test with. We could define this inside each
 // individual test, but I'm fine with having it here.
 
-  struct Pleh {
-    int foo;
-    std::string bar;
-  };
+struct Pleh {
+  int foo;
+  std::string bar;
+};
+
+struct ChildPleh : public Pleh {
+  bool child;
+};
 
 TEST(AcCoreTests, ListSize) {
   auto& classInstance = fr::autocereal::ClassSingleton<Pleh>::instance();
   ASSERT_EQ(classInstance.memberCount(), 2);
+}
+
+TEST(AcCoreTests, NumberParents) {
+  auto& classInstance = fr::autocereal::ClassSingleton<Pleh>::instance();
+  auto& childClassInstance = fr::autocereal::ClassSingleton<ChildPleh>::instance();
+  ASSERT_EQ(classInstance.baseCount(), 0);
+  ASSERT_EQ(childClassInstance.baseCount(), 1);
 }
 
 // We need an array of strings with the nonstatic names of the members

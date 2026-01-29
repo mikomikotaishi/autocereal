@@ -82,6 +82,9 @@ namespace fr::autocereal {
   class ClassSingleton {
     constexpr static auto _ctx = std::meta::access_context::unchecked();
     static constexpr size_t _memberCount = std::meta::nonstatic_data_members_of(^^Class, _ctx).size();
+    // Number of parents this class has
+    static constexpr size_t _baseCount = std::meta::bases_of(^^Class, _ctx).size();
+    static constexpr auto _bases = std::define_static_array(std::meta::bases_of(^^Class, _ctx));
     
     std::vector<std::string> _memberNamesStrings;
 
@@ -110,6 +113,11 @@ namespace fr::autocereal {
     
   public:
     using ReflectionType = Class;
+
+    template <int index>
+    struct Parent {
+      using Type = [:std::meta::type_of(_bases[index]):];
+    };
     
     static const ClassSingleton& instance() {
       static ClassSingleton<Class> instance;
@@ -122,6 +130,10 @@ namespace fr::autocereal {
     
     constexpr size_t memberCount() const {
       return _memberCount;
+    }
+
+    constexpr size_t baseCount() const {
+      return _baseCount;
     }
 
     std::vector<std::string> getMemberNames() const {
@@ -177,6 +189,48 @@ namespace fr::autocereal {
   }
 
   /**
+   * This will save any parents that need to be saved.
+   * This should only be called if there ARE any parents.
+   * (And not by you! You don't need to worry about this!)
+   */
+
+  template <typename Archive, typename Class, size_t memberCount, size_t index = 0>
+  void saveHelper(Archive &ar, const Class &instance);
+  
+  template <typename Archive, typename Class, size_t index = 0>
+  void saveParents(Archive &ar, const Class& instance) {
+    const fr::autocereal::ClassSingleton<Class>& classInstance = fr::autocereal::ClassSingleton<Class>::instance();    
+    using Parent = typename fr::autocereal::ClassSingleton<Class>::Parent<index>::Type;
+    const fr::autocereal::ClassSingleton<Parent>& parentInstance = fr::autocereal::ClassSingleton<Parent>::instance();    
+    const auto& baseInstance = static_cast<const Parent&>(instance);
+    saveHelper<Archive, Parent, parentInstance.memberCount()>(ar, baseInstance);
+    if constexpr ((index + 1)  < classInstance.baseCount()) {
+      saveParents<Archive, Class, index + 1>(ar, instance);
+    }
+  }
+
+  /**
+   * This will load any parents that need to be loaded.
+   * This should only be called if there ARE any parents.
+   * (And not by you! You don't need to worry about this!)
+   */
+
+  template <typename Archive, typename Class, size_t memberCount, size_t index = 0>
+  void loadHelper(Archive &ar, Class& instance);
+
+  template <typename Archive, typename Class, size_t index = 0>
+  void loadParents(Archive &ar, Class& instance) {
+    const fr::autocereal::ClassSingleton<Class>& classInstance = fr::autocereal::ClassSingleton<Class>::instance();
+    using Parent = typename fr::autocereal::ClassSingleton<Class>::Parent<index>::Type;
+    const fr::autocereal::ClassSingleton<Parent>& parentInstance = fr::autocereal::ClassSingleton<Parent>::instance();    
+    auto& baseInstance = static_cast<Parent&>(instance);
+    loadHelper<Archive, Parent, parentInstance.memberCount()>(ar, baseInstance);
+    if constexpr ((index + 1)  < classInstance.baseCount()) {
+      loadParents<Archive, Class, index + 1>(ar, instance);
+    }      
+  }
+  
+  /**
    * We need to use save_helper to recursively unwind
    * the calls to archive, since we need to send the
    * current index as a template parameter and we
@@ -186,12 +240,18 @@ namespace fr::autocereal {
    * be consteval.
    */
 
-  template <typename Archive, typename Class, size_t memberCount, size_t index = 0>
+  template <typename Archive, typename Class, size_t memberCount, size_t index>
   void saveHelper(Archive &ar, const Class& instance) {
     const auto& classInstance = ClassSingleton<Class>::instance();
-    
     static_assert(classInstance.memberCount() > 0);
     static_assert(index < classInstance.memberCount());
+
+    if constexpr(index == 0) {
+      if constexpr (classInstance.baseCount() > 0) {
+        fr::autocereal::saveParents<Archive, Class>(ar, instance);
+      }
+    }
+    
     // Get instance ref for index
     constexpr auto ref_info = fr::autocereal::member_info<Class, index>();
     // Extract the data from the cass
@@ -208,11 +268,17 @@ namespace fr::autocereal {
    * And a load version of that
    */
 
-  template <typename Archive, typename Class, size_t memberCount, size_t index = 0>
+  template <typename Archive, typename Class, size_t memberCount, size_t index>
   void loadHelper(Archive &ar, Class& instance) {
     const auto& classInstance = ClassSingleton<Class>::instance();
     static_assert(classInstance.memberCount() > 0);
     static_assert(index < classInstance.memberCount());
+
+    if constexpr(index == 0) {
+      if constexpr (classInstance.baseCount() > 0) {
+        fr::autocereal::loadParents<Archive, Class>(ar, instance);
+      }
+    }
 
     constexpr auto ref_info = fr::autocereal::member_info<Class, index>();
     auto& ref = fr::autocereal::member_ref<Class, ref_info>(instance);
@@ -241,7 +307,7 @@ namespace cereal {
 
   template <typename Archive, typename Class>
   void save(Archive &ar, const Class& instance) {
-    const fr::autocereal::ClassSingleton<Class>& classInstance = fr::autocereal::ClassSingleton<Class>::instance();
+    const auto& classInstance = fr::autocereal::ClassSingleton<Class>::instance();
     fr::autocereal::saveHelper<Archive, Class, classInstance.memberCount()>(ar, instance);
   }
 
@@ -251,7 +317,7 @@ namespace cereal {
 
   template <typename Archive, typename Class>
   void load(Archive &ar, Class &instance) {
-    const fr::autocereal::ClassSingleton<Class>& classInstance = fr::autocereal::ClassSingleton<Class>::instance();
+    const auto& classInstance = fr::autocereal::ClassSingleton<Class>::instance();
     fr::autocereal::loadHelper<Archive, Class, classInstance.memberCount()>(ar, instance);
   }
   
