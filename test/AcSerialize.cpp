@@ -94,12 +94,6 @@ TEST(AcSerializeTest, AcSerializePrivates) {
   
 }
 
-// Fails - Inherited member is not serialized. This looks intentional.
-// Since I can serialize anything now (citation needed lol)
-// I can fix this by just reflecting the parentage tree and
-// serializing all the parent classes separately. I might
-// also need to register polymorphic classes with the cereal
-// macro for that, will need to look into it more
 TEST(ACSerializeTest, Inheritance) {
 
   struct Parent {
