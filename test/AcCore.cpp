@@ -28,18 +28,17 @@
   };
 
 TEST(AcCoreTests, ListSize) {
-  constexpr size_t size = fr::autocereal::member_list_size<Pleh>();
-  ASSERT_EQ(size, 2);
+  auto& classInstance = fr::autocereal::ClassSingleton<Pleh>::instance();
+  ASSERT_EQ(classInstance.memberCount(), 2);
 }
 
 // We need an array of strings with the nonstatic names of the members
 // of the class
 
 TEST(AcCoreTests, StringArray) {
-
-  constexpr auto namesArray = fr::autocereal::class_member_names<Pleh>();
-  fr::autocereal::Stringify stringifier;
-  auto names = stringifier.stringify(namesArray);
+  auto& classInstance = fr::autocereal::ClassSingleton<Pleh>::instance();
+  
+  auto names = classInstance.getMemberNames();
   ASSERT_EQ(names.size(), 2);
   ASSERT_EQ(names[0], "foo");
   ASSERT_EQ(names[1], "bar");

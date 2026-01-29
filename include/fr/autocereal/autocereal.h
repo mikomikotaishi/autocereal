@@ -54,62 +54,95 @@ namespace fr::autocereal {
   constexpr size_t MAX_CLASS_MEMBERS = 256;
 
   /**
-   * We need to be able to get the size of the member list in a
-   * constexpr/consteval manner.
+   * Define a singleton for any given class, which contains
+   * an array of character arrays to the methods for the class
+   * and the total number of elements in the class
+   *
+   * Appropriate singleton usage check:
+   *
+   * * Will there only ever be one of this type of object? Yes,
+   *   classes can have only one definition, therefore there
+   *   will never be need to be two of this type of singleton
+   *   for a class.
+   * * Is stateless: True. It contains information accumulated
+   *   at compile time that will never change.
+   * * Does not hide dependencies: True.
+   *
+   * I actually really like a singleton here. It guarantees I
+   * won't run any of my reflection functions multiple times
+   * on a class, and it seems great for isolating a lot of
+   * the consteval/constexpr stuff that needs to happen in
+   * the private sections of the code.
+   *
+   * This may be the first time I've ever actually liked
+   * the singleton pattern for something.
    */
 
   template <typename Class>
-  consteval size_t member_list_size() {
-    constexpr auto ctx = std::meta::access_context::unchecked();
-    auto members = std::meta::nonstatic_data_members_of(^^Class, ctx);
-    return members.size();
-  }
-  
-  /**
-   * Populate an array of character arrays with identifier names
-   * from the target class.
-   */
-  
-  template <typename Class>
-  consteval auto class_member_names() {
-    constexpr auto ctx = std::meta::access_context::unchecked();
-    auto members = std::meta::nonstatic_data_members_of(^^Class, ctx);
-    assert(members.size() < MAX_CLASS_MEMBERS);
-    std::array<std::array<char, MAX_IDENTIFIER_LENGTH>, MAX_CLASS_MEMBERS> names;
+  class ClassSingleton {
+    constexpr static auto _ctx = std::meta::access_context::unchecked();
+    static constexpr size_t _memberCount = std::meta::nonstatic_data_members_of(^^Class, _ctx).size();
+    
+    std::vector<std::string> _memberNamesStrings;
 
-    // Clear all names
-    for (int i = 0; i < MAX_CLASS_MEMBERS; ++i) {
-      names[i].fill('\0');
+    // Sets up and returns the membernames array at compile time.
+    // We can return this array and move it into _memberNames at runtime.
+    consteval auto classMemberNames() {
+      std::array<std::array<char, MAX_IDENTIFIER_LENGTH>, MAX_CLASS_MEMBERS> names;
+
+      auto members = std::meta::nonstatic_data_members_of(^^Class, _ctx);
+      // We do MAX_CLASS_MEMBERS - 1 so we know we'll always hit a null
+      // terminator in this array
+      assert(members.size() < MAX_CLASS_MEMBERS - 1);
+
+      // Clear all names
+      for (int i = 0; i < MAX_CLASS_MEMBERS; ++i) {
+        names[i].fill('\0');
+      }
+
+      for (int memberIndex = 0; memberIndex < members.size(); ++memberIndex) {      
+        auto svName = std::meta::identifier_of(members[memberIndex]);
+        assert(svName.length() < MAX_IDENTIFIER_LENGTH);
+        std::copy(svName.begin(), svName.end(), names[memberIndex].begin());
+      }
+      return names;
     }
     
-    for (int memberIndex = 0; memberIndex < members.size(); ++memberIndex) {      
-      auto svName = std::meta::identifier_of(members[memberIndex]);
-      assert(svName.length() < MAX_IDENTIFIER_LENGTH);
-      std::copy(svName.begin(), svName.end(), names[memberIndex].begin());
+  public:
+    using ReflectionType = Class;
+    
+    static const ClassSingleton& instance() {
+      static ClassSingleton<Class> instance;
+      return instance;
     }
-    return names;
-  }
 
-  /**
-   * Create a runtime vector of names from class_member_names data.
-   * We could use the array directly but we'll want to spork our
-   * eyeballs out before we're done.
-   */
+    const std::string& memberAtIndex(int index) const {
+      return _memberNamesStrings[index];
+    }
+    
+    constexpr size_t memberCount() const {
+      return _memberCount;
+    }
 
-  struct Stringify {
-    std::vector<std::string> stringify(std::array<std::array<char, MAX_IDENTIFIER_LENGTH>, MAX_CLASS_MEMBERS> names) {
-      int idx = 0;
-      std::vector<std::string> ret;
-      while (names[idx][0] != '\0') {
-        // I can use the character data constructor here since I zeroed out my memory.
-        std::string name(names[idx].data());
-        ret.push_back(name);
+    std::vector<std::string> getMemberNames() const {
+      return _memberNamesStrings;
+    }
+
+  private:
+    ClassSingleton() {
+      auto memberNames = classMemberNames();
+      
+      size_t idx = 0;
+      // Restringify array at runtime
+      while(memberNames[idx][0] != '\0') {
+        std::string name(memberNames[idx].data());
+        _memberNamesStrings.push_back(name);
         idx++;
       }
-      return ret;
     }
+    ~ClassSingleton() {}
   };
-
+  
   /**
    * Retrieve a memberinfo for a member, by index
    *
@@ -155,23 +188,19 @@ namespace fr::autocereal {
 
   template <typename Archive, typename Class, size_t memberCount, size_t index = 0>
   void saveHelper(Archive &ar, const Class& instance) {
-    // TODO: Come up with a way to not create one instance of this array for every
-    // member in the class.
-    constexpr static auto namesArray = fr::autocereal::class_member_names<Class>();
-    Stringify stringifier;
-    auto names = stringifier.stringify(namesArray);
-
-    static_assert(memberCount > 0);
-    static_assert(index < memberCount);
+    const auto& classInstance = ClassSingleton<Class>::instance();
+    
+    static_assert(classInstance.memberCount() > 0);
+    static_assert(index < classInstance.memberCount());
     // Get instance ref for index
     constexpr auto ref_info = fr::autocereal::member_info<Class, index>();
     // Extract the data from the cass
     const auto& constRef = fr::autocereal::member_ref_const<Class, ref_info>(instance);
-    ar(cereal::make_nvp(names[index], constRef));
+    ar(cereal::make_nvp(classInstance.memberAtIndex(index), constRef));
 
     // Recursively unwind until all members are archived
-    if constexpr ((index + 1)  < memberCount) {
-      saveHelper<Archive, Class, memberCount, index + 1>(ar, instance);
+    if constexpr ((index + 1)  < classInstance.memberCount()) {
+      saveHelper<Archive, Class, classInstance.memberCount(), index + 1>(ar, instance);
     }    
   }
 
@@ -181,8 +210,9 @@ namespace fr::autocereal {
 
   template <typename Archive, typename Class, size_t memberCount, size_t index = 0>
   void loadHelper(Archive &ar, Class& instance) {
-    static_assert(memberCount > 0);
-    static_assert(index < memberCount);
+    const auto& classInstance = ClassSingleton<Class>::instance();
+    static_assert(classInstance.memberCount() > 0);
+    static_assert(index < classInstance.memberCount());
 
     constexpr auto ref_info = fr::autocereal::member_info<Class, index>();
     auto& ref = fr::autocereal::member_ref<Class, ref_info>(instance);
@@ -192,8 +222,8 @@ namespace fr::autocereal {
     
     ar(ref);
 
-    if constexpr ((index + 1) < memberCount) {
-      loadHelper<Archive, Class, memberCount, index + 1>(ar, instance);
+    if constexpr ((index + 1) < classInstance.memberCount()) {
+      loadHelper<Archive, Class, classInstance.memberCount(), index + 1>(ar, instance);
     }
   }
   
@@ -211,8 +241,8 @@ namespace cereal {
 
   template <typename Archive, typename Class>
   void save(Archive &ar, const Class& instance) {
-    constexpr static size_t memberCount = fr::autocereal::member_list_size<Class>();
-    fr::autocereal::saveHelper<Archive, Class, memberCount>(ar, instance);
+    const fr::autocereal::ClassSingleton<Class>& classInstance = fr::autocereal::ClassSingleton<Class>::instance();
+    fr::autocereal::saveHelper<Archive, Class, classInstance.memberCount()>(ar, instance);
   }
 
   /**
@@ -221,8 +251,8 @@ namespace cereal {
 
   template <typename Archive, typename Class>
   void load(Archive &ar, Class &instance) {
-    constexpr static size_t memberCount = fr::autocereal::member_list_size<Class>();
-    fr::autocereal::loadHelper<Archive, Class, memberCount>(ar, instance);
+    const fr::autocereal::ClassSingleton<Class>& classInstance = fr::autocereal::ClassSingleton<Class>::instance();
+    fr::autocereal::loadHelper<Archive, Class, classInstance.memberCount()>(ar, instance);
   }
   
 }
