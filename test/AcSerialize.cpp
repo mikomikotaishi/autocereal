@@ -73,6 +73,8 @@ TEST(AcSerializeTest, AcSerializePrivates) {
     }
   };
 
+  const auto &instance = fr::autocereal::ClassSingleton<PrivateParts>::instance();
+  ASSERT_EQ(instance.memberCount(), 2);
   PrivateParts parts;
   PrivateParts copy;
   parts.setParts(42);
@@ -86,7 +88,7 @@ TEST(AcSerializeTest, AcSerializePrivates) {
 
   {
     cereal::JSONInputArchive archive(stream);
-    archive(parts);
+    archive(copy);
   }
 
   ASSERT_EQ(parts.getParts(), copy.getParts());
