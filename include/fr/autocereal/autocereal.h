@@ -28,8 +28,10 @@
 
 #include <algorithm>
 #include <array>
+#include <concepts>
 #include <meta>
 #include <string.h>
+#include <iostream>
 #include <vector>
 
 namespace fr::autocereal {
@@ -295,6 +297,132 @@ namespace fr::autocereal {
     if constexpr ((index + 1) < classInstance.memberCount()) {
       loadHelper<Archive, Class, classInstance.memberCount(), index + 1>(ar, instance);
     }
+  }
+
+  /**
+   * A couple of stream concepts so we can implement to_json and to_xml.
+   * You could do YAML too with one of the cereal yaml projects
+   */
+
+  template <typename T>
+  concept IsInputStream = std::derived_from<T, std::istream>;
+
+  template <typename T>
+  concept IsOutputStream = std::derived_from<T, std::ostream>;
+
+  /**
+   * And cereal input/output archive concepts too
+   */
+
+  template <typename T>
+  concept IsInputArchive = std::derived_from<T, cereal::detail::InputArchiveBase>;
+
+  template <typename T>
+  concept IsOutputArchive = std::derived_from<T, cereal::detail::OutputArchiveBase>;
+
+  /**
+   * Generic to-output-archive. This just writes the archive to the
+   * stream.
+   */
+
+  template <typename T, typename ArchiveType>
+  requires IsOutputArchive<ArchiveType>
+  void to_output_archive(const T& obj, ArchiveType &ar) {
+    ar(obj);
+  }
+
+  /**
+   * Generic from-input-archive reads an object from an
+   * archive.
+   */
+
+  template <typename T, typename ArchiveType>
+  requires IsInputArchive<ArchiveType>
+  void from_input_archive(T& obj, ArchiveType &ar) {
+    ar(obj);
+  }
+
+  /**
+   * to_json writes json data into an output stream
+   */
+
+  template <typename T, typename Stream>
+  requires IsOutputStream<Stream>
+  void to_json(const T& obj, Stream& stream) {
+    cereal::JSONOutputArchive ar(stream);
+    to_output_archive(obj, ar);
+  }
+
+  /**
+   * from_json reads json data into an object
+   */
+
+  template <typename T, typename Stream>
+  requires IsInputStream<Stream>
+  void from_json(T& obj, Stream& stream) {
+    cereal::JSONInputArchive ar(stream);
+    from_input_archive(obj, ar);
+  }
+
+  /**
+   * to_xml writes XML data to a stream
+   */
+  
+  template <typename T, typename Stream>
+  requires IsOutputStream<Stream>
+  void to_xml(const T& obj, Stream& stream) {
+    cereal::XMLOutputArchive ar(stream);
+    ar(obj);
+  }
+
+  /**
+   * from_xml reads XML data from a stream
+   */
+  template <typename T, typename Stream>
+  requires IsInputStream<Stream>
+  void from_xml(T& obj, Stream& stream) {
+    cereal::XMLInputArchive ar(stream);
+    ar(obj);
+  }
+
+  /**
+   * String version of to_json
+   */
+  template <typename T>
+  std::string to_json(const T& obj) {
+    std::stringstream stream;
+    to_json(obj, stream);
+    return stream.str();
+  }
+
+  /**
+   * String version of from_json
+   */
+  template <typename T>
+  void from_json(T& obj, std::string json) {
+    std::stringstream stream(json);
+    from_json(obj, stream);
+  }
+
+  /**
+   * String version of to_xml
+   */
+
+  template <typename T>
+  std::string to_xml(const T& obj) {
+    std::stringstream stream;
+    to_xml(obj, stream);
+    return stream.str();
+  }
+
+  /**
+   * String version of from_xml
+   */
+
+  template <typename T>
+  void from_xml(T& obj, std::string xml) {
+    std::stringstream stream(xml);
+    from_xml(obj, stream);
   }
   
 }
