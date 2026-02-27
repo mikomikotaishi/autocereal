@@ -52,8 +52,8 @@ namespace fr::autocereal {
    *
    */
   
-  constexpr size_t MAX_IDENTIFIER_LENGTH = 256;
-  constexpr size_t MAX_CLASS_MEMBERS = 256;
+  inline constexpr size_t MAX_IDENTIFIER_LENGTH = 256;
+  inline constexpr size_t MAX_CLASS_MEMBERS = 256;
 
   /**
    * Define a singleton for any given class, which contains

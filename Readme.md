@@ -16,17 +16,17 @@ the developer working on it.
 
 # Limitations
 
-Two main ones of note are due to not being able to hoist std::strings across the
-consteval boundary. This code reads member information into arrays of characters.
+Two main ones of note are due to not being able to hoist `std::string`s across the
+`consteval` boundary. This code reads member information into arrays of characters.
 So max identifier length and max class members are both 256 right now. This can
-be changed in the autocereal.h file if you need more.
+be changed in the `<fr/autocereal/autocereal.h>` file if you need more.
 
 Additionally, (I think) I'm creating a copy of this array per data member during
 saves. This would actually be a good place to use a per-class singleton, since
 there will only ever be one class definition for a class.
 
-Does not support utf8. Maybe I can change my character types to char8_t and 
-std::u8string? Will try that tomorrow. Looking forward to writing test class with
+Does not support utf8. Maybe I can change my character types to `char8_t` and 
+`std::u8string`? Will try that tomorrow. Looking forward to writing test class with
 emoji members.
 
 # Using
@@ -43,6 +43,6 @@ The general concept is sound. Needs more work, but I wanted to get this out
 early. Reflection is rather awkward to use right now, but is also kinda... well...
 sorcery.
 
-It'd be nice if I could use "template for" instead of index recursion for
+It'd be nice if I could use `template for` instead of index recursion for
 my load/save functions. It is *really* touchy about not wanting to be
 used outside consteval contexts.
